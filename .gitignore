@@ -1,6 +1,6 @@
-# Binaries
-spectral
-spectral.exe
+# Root Binary
+/spectral
+/spectral.exe
 *.exe
 *.out
 *.test
