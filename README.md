@@ -1,45 +1,45 @@
-# Spectral ⚡
+# Spectral
 
-> **High-Performance Secret Scanner & API Key Hunter in Go**
+> High-performance secret scanner and API key detector in Go.
 
 [![Spectral CI](https://github.com/ispectr3/spectral/actions/workflows/ci.yml/badge.svg)](https://github.com/ispectr3/spectral/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat-square&logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![SARIF 2.1.0](https://img.shields.io/badge/SARIF-2.1.0-orange?style=flat-square)](https://docs.github.com/en/code-security/code-scanning)
 
-**Spectral** is a blazing-fast, concurrent secret scanner engineered in Go for offensive security researchers, bug bounty hunters, and DevSecOps teams. It identifies leaked API keys and tokens across filesystems, `.env` files, and Git commit histories with near-zero false positives.
+Spectral is a concurrent secret scanner written in Go designed for static application security testing (SAST), pre-commit auditing, and secret leakage detection across filesystems and Git histories.
 
-Inspired by modern threat hunting workflows, Spectral pairs **unique segment pattern matching** with **Shannon entropy thresholding** and an **optional live verification engine** to confirm active credentials in milliseconds.
+It pairs signature-based pattern matching with Shannon entropy thresholding to reduce false positives from documentation and test placeholders, and provides an optional live verification engine to validate credential liveness against provider endpoints.
 
 ---
 
-## Architecture & Detection Pipeline
+## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Ingestion ["1. Multi-Source Ingestion"]
-        A[Local Filesystem Walk]
+    subgraph Ingestion ["1. Input Sources"]
+        A[Filesystem Walk]
         B[Git Commit History Diff]
-        C[Standard Input Stream / Stdin]
+        C[Standard Input Pipe]
     end
 
-    subgraph Pipeline ["2. Concurrent Scanning Engine"]
-        D[Worker Pool (Default: 16 Goroutines)]
-        E[Binary File Heuristics: Null Byte Rejection]
-        F[Aho-Corasick & Fast Substring Pre-Filter]
+    subgraph Pipeline ["2. Concurrency Pipeline"]
+        D[Worker Pool - Goroutines]
+        E[Null-Byte Binary Detection]
+        F[Substring Pre-Filter]
     end
 
-    subgraph Evaluation ["3. Verification & Entropy Defense"]
-        G[Exact Provider Regex Match]
-        H[Shannon Entropy H > 3.0 Threshold]
-        I[Placeholder Elimination: 'your_key', 'test_xxx']
+    subgraph Evaluation ["3. Verification & Entropy Analysis"]
+        G[Provider Pattern Match]
+        H[Shannon Entropy Thresholding]
+        I[Placeholder Filter]
         J{Verify Flag Enabled?}
-        K[Live API Probe: Non-destructive Liveness Check]
+        K[Live Provider HTTP Probe]
     end
 
-    subgraph Output ["4. Exporters & CI/CD"]
-        L[Color-Coded Terminal Table]
-        M[Machine-Readable JSON]
+    subgraph Output ["4. Reporting & CI/CD"]
+        L[Terminal Table]
+        M[JSON Export]
         N[SARIF 2.1.0 GitHub Security]
     end
 
@@ -57,38 +57,38 @@ flowchart TD
 
 ---
 
-## Core Capabilities
+## Core Characteristics
 
-- **🚀 Blazing Fast Concurrency:** Multi-threaded worker pool powered by native Go goroutines, processing thousands of files per second.
-- **🎯 Unique Segment Detection:** Eliminates false alarms from documentation/tutorials by requiring immutable byte segments (e.g., `T3BlbkFJ` in modern OpenAI keys, `sk-ant-api03-` in Anthropic).
-- **🔬 Shannon Entropy Filtering:** Calculates information entropy $H(X) = -\sum P(x_i) \log_2 P(x_i)$ to discard repetitive placeholders and non-random test values.
-- **📜 Git Commit History Walker:** Scans full commit diffs (`git log -p`) to catch secrets that were committed and subsequently deleted in later revisions.
-- **⚡ Live Verification Engine:** Non-destructive, non-metered HTTP probes verifying whether discovered tokens are **ACTIVE**, **REVOKED**, or **RATE LIMITED** across OpenAI, Anthropic, Stripe, GitHub, and HuggingFace.
-- **🛡️ SARIF 2.1.0 Ready:** Native exporter formatted for automated integration into GitHub Code Scanning and Security tabs.
-- **📦 Zero External Runtime Dependencies:** Pure Go standard library architecture, compiling to a self-contained static binary.
+- **Concurrent Processing:** Worker pool built on Go goroutines for parallel directory traversal and file inspection.
+- **Unique Segment Matching:** Targets immutable key structures (such as Base64 markers `T3BlbkFJ` in modern OpenAI keys and versioned prefixes in Anthropic keys) to eliminate false detections in documentation and tutorial samples.
+- **Shannon Entropy Analysis:** Computes character frequency entropy $H(X) = -\sum P(x_i) \log_2 P(x_i)$ to discard low-entropy and placeholder strings.
+- **Git History Auditing:** Traverses commit diffs (`git log -p`) to identify secrets that were committed and subsequently removed from active branches.
+- **Liveness Probing:** Optional non-destructive HTTP checks against provider APIs (OpenAI, Anthropic, Stripe, GitHub, HuggingFace) to categorize credentials as active, revoked, or rate-limited.
+- **SARIF 2.1.0 Support:** Formatted output for integration with GitHub Code Scanning alerts.
+- **Zero External Dependencies:** Built entirely with the Go standard library, compiling to a standalone static binary without CGO requirements.
 
 ---
 
-## Supported Providers & Detection Accuracy
+## Supported Providers
 
-| Provider | Signature / Pattern Mechanism | Target Environment | Live Verification |
-| :--- | :--- | :--- | :---: |
-| **OpenAI (Project)** | `sk-proj-[A-Za-z0-9_-]{8,}T3BlbkFJ...` | AI & LLM Applications | ✅ |
-| **OpenAI (Legacy)** | `sk-[A-Za-z0-9]{48}` | AI & LLM Applications | ✅ |
-| **Anthropic** | `sk-ant-api03-[A-Za-z0-9_-]{80,110}` | Claude LLM Endpoints | ✅ |
-| **AWS IAM** | `(AKIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}` | Cloud Infrastructure | ✅ |
-| **Stripe** | `sk_live_[0-9a-zA-Z]{24,99}` | Payment Gateways | ✅ |
-| **GitHub** | `ghp_[0-9a-zA-Z]{36}`, `github_pat_...` | Source Code & CI/CD | ✅ |
-| **HuggingFace** | `hf_[0-9a-zA-Z]{34}` | ML Model Repositories | ✅ |
-| **Google Gemini** | `AIzaSy[A-Za-z0-9_-]{33}` | Cloud & AI Services | ✅ |
-| **Slack** | `xoxb-[0-9]{10,13}-[0-9]{10,13}-...` | Chat & Bot Automations | ✅ |
-| **Groq Cloud** | `gsk_[a-zA-Z0-9]{52}` | AI Inference Platforms | — |
-| **Pinecone** | `pcsk_[a-zA-Z0-9_-]{48,70}` | Vector Databases | — |
-| **SendGrid** | `SG\.[0-9a-zA-Z_-]{22}\.[0-9a-zA-Z_-]{43}` | Email Infrastructure | — |
-| **Resend** | `re_[a-zA-Z0-9]{32,48}` | Developer Email APIs | — |
-| **Discord** | `[MN][A-Za-z0-9]{23,25}\...` | Bot Authorizations | — |
-| **Telegram** | `[0-9]{9,10}:[a-zA-Z0-9_-]{35}` | Bot Integrations | — |
-| **Postman** | `PMAK-[a-f0-9]{24}-[a-f0-9]{34}` | Workspace Integrations | — |
+| Provider | Signature Pattern / Mechanism | Target Scope | Live Verification |
+| :--- | :--- | :--- | :--- |
+| OpenAI (Project) | `sk-proj-[A-Za-z0-9_-]{8,}T3BlbkFJ...` | LLM API Keys | Supported |
+| OpenAI (Legacy) | `sk-[A-Za-z0-9]{48}` | User API Keys | Supported |
+| Anthropic | `sk-ant-api03-[A-Za-z0-9_-]{80,110}` | Claude Endpoints | Supported |
+| AWS IAM | `(AKIA\|AGPA\|AIDA\|AROA\|AIPA)[A-Z0-9]{16}` | Cloud Infrastructure | Supported |
+| Stripe | `sk_live_[0-9a-zA-Z]{24,99}` | Payment Gateways | Supported |
+| GitHub | `ghp_[0-9a-zA-Z]{36}`, `github_pat_...` | Repository & CI Tokens | Supported |
+| HuggingFace | `hf_[0-9a-zA-Z]{34}` | Model Repositories | Supported |
+| Google Gemini | `AIzaSy[A-Za-z0-9_-]{33}` | AI Platform Keys | Supported |
+| Slack | `xoxb-[0-9]{10,13}-[0-9]{10,13}-...` | Bot Tokens | Supported |
+| Groq Cloud | `gsk_[a-zA-Z0-9]{52}` | Inference APIs | None |
+| Pinecone | `pcsk_[a-zA-Z0-9_-]{48,70}` | Vector Database | None |
+| SendGrid | `SG\.[0-9a-zA-Z_-]{22}\.[0-9a-zA-Z_-]{43}` | Email Infrastructure | None |
+| Resend | `re_[a-zA-Z0-9]{32,48}` | Transactional Email | None |
+| Discord | `[MN][A-Za-z0-9]{23,25}\...` | Bot Credentials | None |
+| Telegram | `[0-9]{9,10}:[a-zA-Z0-9_-]{35}` | Bot Credentials | None |
+| Postman | `PMAK-[a-f0-9]{24}-[a-f0-9]{34}` | Workspace Integrations | None |
 
 ---
 
@@ -108,52 +108,52 @@ go install github.com/ispectr3/spectral/cmd/spectral@latest
 
 ---
 
-## Quick Start & Usage
+## Usage
 
-### 1. Scan Local Directory / Repository
+### Local Filesystem Scan
 ```bash
-# Scan current directory with 16 threads
+# Scan working directory with default thread pool (16 workers)
 ./spectral -path .
 
-# Scan specific directory with 32 concurrent workers
+# Scan specific directory with 32 worker threads
 ./spectral -path /path/to/project -threads 32
 ```
 
-### 2. Verify Active Secrets (Liveness Probing)
+### Live Credential Verification
 ```bash
-# Audit and verify whether detected tokens are live against provider APIs
+# Verify detected secrets against upstream provider APIs
 ./spectral -path . -verify
 
-# Filter output to display ONLY active live credentials
+# Filter output to display only confirmed active credentials
 ./spectral -path . -verified-only
 ```
 
-### 3. Scan Full Git Commit History
+### Git History Scan
 ```bash
-# Inspect every commit patch diff for previously committed credentials
+# Inspect commit history diffs for previously committed secrets
 ./spectral -path /path/to/git/repo -git
 ```
 
-### 4. Standard Input (Piped Input)
+### Standard Input
 ```bash
-cat .env | ./spectral
-docker logs container_name | ./spectral
+cat .env | ./spectral -path -
+docker logs container_name | ./spectral -path -
 ```
 
-### 5. CI/CD & SARIF Integration
+### CI/CD and SARIF Export
 ```bash
-# Generate SARIF 2.1.0 for GitHub Code Scanning
+# Export findings to SARIF 2.1.0 format
 ./spectral -path . -sarif results.sarif
 
-# Export JSON report
+# Export findings to JSON
 ./spectral -path . -json -output findings.json
 ```
 
 ---
 
-## GitHub Actions CI Integration Example
+## CI/CD Workflow Example
 
-Add Spectral to your `.github/workflows/security.yml`:
+Add Spectral to `.github/workflows/security.yml`:
 
 ```yaml
 name: Security Audit
@@ -164,19 +164,21 @@ jobs:
   secret-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Full history for git scanning
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: 'stable'
+          cache: false
 
       - name: Install Spectral
         run: go install github.com/ispectr3/spectral/cmd/spectral@latest
 
-      - name: Run Secret Scan & Generate SARIF
+      - name: Run Secret Scan
         run: spectral -path . -git -sarif spectral-results.sarif
 
       - name: Upload SARIF to GitHub Security Tab
@@ -190,4 +192,4 @@ jobs:
 
 ## License
 
-Distributed under the MIT License. See `LICENSE` for details.
+MIT License. See `LICENSE` for details.

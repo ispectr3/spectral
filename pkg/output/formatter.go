@@ -30,7 +30,7 @@ func PrintBanner(w io.Writer) {
  |____/|_|   |_____\____| |_| |_| \_/_/   \_\|_____|
 `
 	fmt.Fprintf(w, "%s%s%s", colorCyan, banner, colorReset)
-	fmt.Fprintf(w, " %sSpectral v1.0.0 — High-Performance Secret & Key Hunter%s\n", colorBold, colorReset)
+	fmt.Fprintf(w, " %sSpectral v1.0.0 - High-Performance Secret & Key Hunter%s\n", colorBold, colorReset)
 	fmt.Fprintf(w, " Maintainer: @ispectr3 | Engine: Go Concurrent Pipeline\n\n")
 }
 
