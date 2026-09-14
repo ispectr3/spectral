@@ -1,0 +1,12 @@
+# Binaries
+spectral
+spectral.exe
+*.exe
+*.out
+*.test
+
+# OS & IDE
+.DS_Store
+.idea/
+.vscode/
+*.log
