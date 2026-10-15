@@ -2,194 +2,156 @@
 
 > High-performance secret scanner and API key detector in Go.
 
-[![Spectral CI](https://github.com/ispectr3/spectral/actions/workflows/ci.yml/badge.svg)](https://github.com/ispectr3/spectral/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat-square&logo=go)](https://go.dev)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![SARIF 2.1.0](https://img.shields.io/badge/SARIF-2.1.0-orange?style=flat-square)](https://docs.github.com/en/code-security/code-scanning)
+Spectral scans filesystems, standard input, and Git commit diffs for credential-like strings. It combines provider-specific regular expressions with placeholder filtering and Shannon-entropy thresholds, and can optionally classify some findings through provider API requests.
 
-Spectral is a concurrent secret scanner written in Go designed for static application security testing (SAST), pre-commit auditing, and secret leakage detection across filesystems and Git histories.
+## Authorized use
 
-It pairs signature-based pattern matching with Shannon entropy thresholding to reduce false positives from documentation and test placeholders, and provides an optional live verification engine to validate credential liveness against provider endpoints.
+Use Spectral only on repositories, files, credentials, and systems that you own or are explicitly authorized to assess. The `-verify` and `-verified-only` options send detected credentials to provider API endpoints; use them only with the required authorization and with awareness of provider rate limits. Protect generated reports, especially JSON reports, because they include the detected `secret` field.
 
----
+## Features
 
-## Architecture
+- Concurrent directory scanning with a configurable worker count (16 by default).
+- Scanning of a directory, a single file, or stdin (`-path -`).
+- Git history inspection through added lines in `git log -p -U0` output.
+- Provider signature matching with placeholder rejection and Shannon-entropy filtering.
+- Optional live verification for OpenAI, Anthropic, Stripe, GitHub, and Hugging Face.
+- Terminal output with masked values, JSON output, and SARIF 2.1.0 export.
+- Optional exit status 1 when findings remain after scanning (`-fail-on-leak`).
+- No external Go modules are declared; the module uses the Go standard library.
 
-```mermaid
-flowchart TD
-    subgraph Ingestion ["1. Input Sources"]
-        A[Filesystem Walk]
-        B[Git Commit History Diff]
-        C[Standard Input Pipe]
-    end
+## Detection rules
 
-    subgraph Pipeline ["2. Concurrency Pipeline"]
-        D[Worker Pool - Goroutines]
-        E[Null-Byte Binary Detection]
-        F[Substring Pre-Filter]
-    end
+The built-in rules currently cover the following providers and token families:
 
-    subgraph Evaluation ["3. Verification & Entropy Analysis"]
-        G[Provider Pattern Match]
-        H[Shannon Entropy Thresholding]
-        I[Placeholder Filter]
-        J{Verify Flag Enabled?}
-        K[Live Provider HTTP Probe]
-    end
-
-    subgraph Output ["4. Reporting & CI/CD"]
-        L[Terminal Table]
-        M[JSON Export]
-        N[SARIF 2.1.0 GitHub Security]
-    end
-
-    A --> D
-    B --> D
-    C --> D
-    D --> E --> F --> G --> H --> I --> J
-    J -- Yes --> K --> L
-    J -- No --> L
-    K --> M
-    K --> N
-    L --> M
-    L --> N
-```
-
----
-
-## Core Characteristics
-
-- **Concurrent Processing:** Worker pool built on Go goroutines for parallel directory traversal and file inspection.
-- **Unique Segment Matching:** Targets immutable key structures (such as Base64 markers `T3BlbkFJ` in modern OpenAI keys and versioned prefixes in Anthropic keys) to eliminate false detections in documentation and tutorial samples.
-- **Shannon Entropy Analysis:** Computes character frequency entropy $H(X) = -\sum P(x_i) \log_2 P(x_i)$ to discard low-entropy and placeholder strings.
-- **Git History Auditing:** Traverses commit diffs (`git log -p`) to identify secrets that were committed and subsequently removed from active branches.
-- **Liveness Probing:** Optional non-destructive HTTP checks against provider APIs (OpenAI, Anthropic, Stripe, GitHub, HuggingFace) to categorize credentials as active, revoked, or rate-limited.
-- **SARIF 2.1.0 Support:** Formatted output for integration with GitHub Code Scanning alerts.
-- **Zero External Dependencies:** Built entirely with the Go standard library, compiling to a standalone static binary without CGO requirements.
-
----
-
-## Supported Providers
-
-| Provider | Signature Pattern / Mechanism | Target Scope | Live Verification |
-| :--- | :--- | :--- | :--- |
-| OpenAI (Project) | `sk-proj-[A-Za-z0-9_-]{8,}T3BlbkFJ...` | LLM API Keys | Supported |
-| OpenAI (Legacy) | `sk-[A-Za-z0-9]{48}` | User API Keys | Supported |
-| Anthropic | `sk-ant-api03-[A-Za-z0-9_-]{80,110}` | Claude Endpoints | Supported |
-| AWS IAM | `(AKIA\|AGPA\|AIDA\|AROA\|AIPA)[A-Z0-9]{16}` | Cloud Infrastructure | Supported |
-| Stripe | `sk_live_[0-9a-zA-Z]{24,99}` | Payment Gateways | Supported |
-| GitHub | `ghp_[0-9a-zA-Z]{36}`, `github_pat_...` | Repository & CI Tokens | Supported |
-| HuggingFace | `hf_[0-9a-zA-Z]{34}` | Model Repositories | Supported |
-| Google Gemini | `AIzaSy[A-Za-z0-9_-]{33}` | AI Platform Keys | Supported |
-| Slack | `xoxb-[0-9]{10,13}-[0-9]{10,13}-...` | Bot Tokens | Supported |
-| Groq Cloud | `gsk_[a-zA-Z0-9]{52}` | Inference APIs | None |
-| Pinecone | `pcsk_[a-zA-Z0-9_-]{48,70}` | Vector Database | None |
-| SendGrid | `SG\.[0-9a-zA-Z_-]{22}\.[0-9a-zA-Z_-]{43}` | Email Infrastructure | None |
-| Resend | `re_[a-zA-Z0-9]{32,48}` | Transactional Email | None |
-| Discord | `[MN][A-Za-z0-9]{23,25}\...` | Bot Credentials | None |
-| Telegram | `[0-9]{9,10}:[a-zA-Z0-9_-]{35}` | Bot Credentials | None |
-| Postman | `PMAK-[a-f0-9]{24}-[a-f0-9]{34}` | Workspace Integrations | None |
-
----
+| Provider | Detection | Live verification |
+| --- | --- | --- |
+| OpenAI | Project and legacy API keys | Yes |
+| Anthropic | Claude API keys | Yes |
+| AWS | IAM access key IDs | No |
+| Stripe | Live and restricted live secret keys | Yes |
+| GitHub | Classic and fine-grained personal access tokens | Yes |
+| Hugging Face | User access tokens | Yes |
+| Google | AI Studio / Gemini API keys | No |
+| Slack | Bot user OAuth tokens | No |
+| Groq | Cloud inference API keys | No |
+| Pinecone | Vector database API keys | No |
+| SendGrid | API authentication tokens | No |
+| Resend | Email platform API keys | No |
+| Discord | Bot authorization tokens | No |
+| Telegram | Bot API tokens | No |
+| Postman | API access keys | No |
+| Sentry | Authentication user tokens | No |
 
 ## Installation
 
-### From Source
+The module declares `go 1.26.5` in `go.mod`. Build from a checkout with a compatible Go toolchain:
+
 ```bash
 git clone https://github.com/ispectr3/spectral.git
 cd spectral
 go build -o spectral ./cmd/spectral
 ```
 
-### Via `go install`
+Or install the command package:
+
 ```bash
 go install github.com/ispectr3/spectral/cmd/spectral@latest
 ```
 
----
-
 ## Usage
 
-### Local Filesystem Scan
+### Scan files or stdin
+
 ```bash
-# Scan working directory with default thread pool (16 workers)
+# Scan the current directory with 16 workers
 ./spectral -path .
 
-# Scan specific directory with 32 worker threads
+# Scan a path with a custom worker count
 ./spectral -path /path/to/project -threads 32
+
+# Read content from stdin
+cat .env | ./spectral -path -
 ```
 
-### Live Credential Verification
+By default, recursive directory scans skip `.git`, `node_modules`, `vendor`, Python virtual environments, `__pycache__`, `dist`, `build`, `target`, `.cache`, `.idea`, and `.vscode`. Files larger than 10 MiB are skipped during directory traversal, and files identified as binary by a NUL byte in the first 512 bytes are not scanned.
+
+### Verify findings
+
 ```bash
-# Verify detected secrets against upstream provider APIs
+# Request live checks for supported providers
 ./spectral -path . -verify
 
-# Filter output to display only confirmed active credentials
+# Keep only findings classified as ACTIVE
 ./spectral -path . -verified-only
 ```
 
-### Git History Scan
+### Scan Git history
+
 ```bash
-# Inspect commit history diffs for previously committed secrets
+# Inspect added lines from commit diffs in a local repository
 ./spectral -path /path/to/git/repo -git
 ```
 
-### Standard Input
-```bash
-cat .env | ./spectral -path -
-docker logs container_name | ./spectral -path -
-```
+The Git mode requires the `git` command and reads the repository's commit history through `git log -p -U0`.
 
-### CI/CD and SARIF Export
+### Export results
+
 ```bash
-# Export findings to SARIF 2.1.0 format
+# Print JSON to stdout
+./spectral -path . -json
+
+# Save JSON to a file
+./spectral -path . -output findings.json
+
+# Save SARIF 2.1.0 to a file
 ./spectral -path . -sarif results.sarif
-
-# Export findings to JSON
-./spectral -path . -json -output findings.json
 ```
 
----
+Useful command-line options are:
 
-## CI/CD Workflow Example
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `-path` | `.` | File, directory, or `-` for stdin |
+| `-threads` | `16` | Concurrent scanning workers |
+| `-verify` | `false` | Run supported provider API checks |
+| `-verified-only` | `false` | Keep only `ACTIVE` findings; also enables verification |
+| `-git` | `false` | Scan Git commit history |
+| `-json` | `false` | Write findings as JSON to stdout |
+| `-output` | empty | Save findings as JSON to the given path |
+| `-sarif` | empty | Save a SARIF 2.1.0 report to the given path |
+| `-no-banner` | `false` | Suppress the terminal banner |
+| `-fail-on-leak` | `false` | Exit with status 1 when findings remain |
 
-Add Spectral to `.github/workflows/security.yml`:
+## Tests and CI
 
-```yaml
-name: Security Audit
+Run the repository test suite with:
 
-on: [push, pull_request]
-
-jobs:
-  secret-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 'stable'
-          cache: false
-
-      - name: Install Spectral
-        run: go install github.com/ispectr3/spectral/cmd/spectral@latest
-
-      - name: Run Secret Scan
-        run: spectral -path . -git -sarif spectral-results.sarif
-
-      - name: Upload SARIF to GitHub Security Tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: spectral-results.sarif
+```bash
+go test -v -race ./...
 ```
 
----
+The GitHub Actions workflow also builds the binary with `go build -v -o spectral ./cmd/spectral` and runs a local self-scan with `./spectral -path . -no-banner`.
+
+## Repository structure
+
+```text
+cmd/spectral/       CLI entrypoint and flags
+pkg/detector/       Signature rules and match detection
+pkg/entropy/        Shannon entropy and placeholder filters
+pkg/scanner/        Filesystem, reader, and Git-history scanning
+pkg/verifier/       Provider API liveness checks
+pkg/output/         Terminal, JSON, and SARIF rendering
+```
+
+## Limitations
+
+- Detection is heuristic and limited to the built-in regular expressions; it can produce false positives or miss credentials outside those patterns.
+- Placeholder and entropy filters can discard values that look like examples or have low entropy.
+- Live verification is implemented for only the five providers listed above and depends on network responses, credentials, and provider rate limits.
+- JSON output contains the original detected value in the `secret` field. Store and share reports accordingly; terminal output masks the value and SARIF messages use the masked value.
+- Directory traversal applies the built-in ignored-directory and 10 MiB file-size filters. The scanner does not expose a README/configuration option for customizing those rules.
+- Git scanning inspects added lines from the available commit patches; it is not a complete guarantee that every historical secret will be found.
 
 ## License
 
-MIT License. See `LICENSE` for details.
+MIT License. See [`LICENSE`](LICENSE) for the full text.
